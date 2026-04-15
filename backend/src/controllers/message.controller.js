@@ -43,12 +43,24 @@ export const sendMessage = async (req, res) => {
     console.log("Receiver ID:", receiverId);
     const senderId = req.user._id;
 
-    console.log("Received message data:", {
-      senderId,
-      receiverId,
-      text,
-      image,
-    });
+    if (!text && !image) {
+      return res
+        .status(400)
+        .json({ message: "Message text or image is required" });
+    }
+
+    if (senderId.equals(receiverId)) {
+      return res
+        .status(400)
+        .json({ message: "You cannot send messages to yourself" });
+    }
+
+    const recieverExists = await User.findById(receiverId);
+
+    if (!recieverExists) {
+      return res.status(404).json({ message: "Receiver not found" });
+    }
+
     let imageUrl;
     if (image) {
       const uploadResponse = await cloudinary.uploader.upload(image);
@@ -83,13 +95,19 @@ export const getChatPartners = async (req, res) => {
       $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }],
     });
 
-    const chatPartnerIds = [...new Set(messages.map((msg) =>
-      msg.senderId.toString() === loggedInUserId.toString()
-        ? msg.receiverId.toString()
-        : msg.senderId.toString())
-    )]
+    const chatPartnerIds = [
+      ...new Set(
+        messages.map((msg) =>
+          msg.senderId.toString() === loggedInUserId.toString()
+            ? msg.receiverId.toString()
+            : msg.senderId.toString(),
+        ),
+      ),
+    ];
 
-    const chatPartners = await User.find({ _id: { $in: chatPartnerIds } }).select("-password");
+    const chatPartners = await User.find({
+      _id: { $in: chatPartnerIds },
+    }).select("-password");
     res.status(200).json(chatPartners);
   } catch (error) {
     console.log("Error in getChatPartners controller", error.message);
